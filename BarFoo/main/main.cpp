@@ -13,61 +13,13 @@
 #define BUF_SIZE 1024
 static const char *TAG = "FooBar";
 
-class FooBarCounter 
+class SerialHandler 
 {
 private:
-    QueueHandle_t numberQueue;
-    SemaphoreHandle_t countCompleteSemaphore;
-    int currentNumber;
-    bool processing;
-
+    QueueHandle_t &numberQueue;
 public:
-    FooBarCounter() : currentNumber(0), processing(false) 
-    {
-        numberQueue = xQueueCreate(8, sizeof(int));
-        countCompleteSemaphore = xSemaphoreCreateBinary();
-    }
-
-    static bool isPrime(int num) 
-    {
-        if (num < 2) 
-        	return false;
-        for (int i = 2; i * i <= num; i++) 
-        {
-            if (num % i == 0) return false;
-        }
-        return true;
-    }
-
-    void fooTask() 
-    {
-        while (true) 
-        {
-            if (processing && (currentNumber % 2 == 0 || currentNumber == 0)) 
-            {
-                ESP_LOGI(TAG, "Foo %d%s", currentNumber, isPrime(currentNumber) && currentNumber > 1 ? " Prime" : "");
-                currentNumber--;
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                xSemaphoreGive(countCompleteSemaphore);
-            }
-            vTaskDelay(10);
-        }
-    }
-
-    void barTask() 
-    {
-        while (true) 
-        {
-            if (processing && currentNumber % 2 != 0 && currentNumber >= 0) 
-            {
-                ESP_LOGI(TAG, "Bar %d%s", currentNumber, isPrime(currentNumber) ? " Prime" : "");
-                currentNumber--;
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                xSemaphoreGive(countCompleteSemaphore);
-            }
-            vTaskDelay(10);
-        }
-    }
+    SerialHandler(QueueHandle_t &queue) : numberQueue(queue) 
+	{}
 
     void serialTask() 
     {
@@ -75,7 +27,7 @@ public:
         while (true) 
         {
             int len = uart_read_bytes(UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
-            if (len > 0) 
+            if (len > 0)
             {
                 data[len] = '\0';
                 int receivedNum = atoi((char*)data);
@@ -96,6 +48,68 @@ public:
                     ESP_LOGI(TAG, "Buffer is full");
                 }
             }
+        }
+    }
+};
+
+class FooBarCounter 
+{
+private:
+    QueueHandle_t numberQueue;
+    SemaphoreHandle_t countCompleteSemaphore;
+    int currentNumber;
+    bool processing;
+
+public:
+    FooBarCounter() : currentNumber(0), processing(false)
+    {
+        numberQueue = xQueueCreate(8, sizeof(int));
+        countCompleteSemaphore = xSemaphoreCreateBinary();
+    }
+
+    QueueHandle_t &getQueue() 
+    { 
+    	return numberQueue;
+    }
+
+    static bool isPrime(int num)
+    {
+        if (num < 2) 
+            return false;
+        for (int i = 2; i * i <= num; i++)
+        {
+            if (num % i == 0) return false;
+        }
+        return true;
+    }
+
+    void fooTask()
+    {
+        while (true)
+        {
+            if (processing && (currentNumber % 2 == 0 || currentNumber == 0)) 
+            {
+                ESP_LOGI(TAG, "Foo %d%s", currentNumber, isPrime(currentNumber) && currentNumber > 1 ? " Prime" : "");
+                currentNumber--;
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                xSemaphoreGive(countCompleteSemaphore);
+            }
+            vTaskDelay(10);
+        }
+    }
+
+    void barTask() 
+    {
+        while (true) 
+        {
+            if (processing && currentNumber % 2 != 0 && currentNumber >= 0)
+            {
+                ESP_LOGI(TAG, "Bar %d%s", currentNumber, isPrime(currentNumber) ? " Prime" : "");
+                currentNumber--;
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                xSemaphoreGive(countCompleteSemaphore);
+            }
+            vTaskDelay(10);
         }
     }
 
@@ -119,10 +133,11 @@ public:
 };
 
 FooBarCounter counter;
+SerialHandler serialHandler(counter.getQueue());
 
 void fooTaskWrapper(void *param) { counter.fooTask(); }
 void barTaskWrapper(void *param) { counter.barTask(); }
-void serialTaskWrapper(void *param) { counter.serialTask(); }
+void serialTaskWrapper(void *param) { serialHandler.serialTask(); }
 void countTaskWrapper(void *param) { counter.countTask(); }
 
 extern "C" void app_main() 
