@@ -13,107 +13,125 @@
 #define BUF_SIZE 1024
 static const char *TAG = "FooBar";
 
-QueueHandle_t numberQueue;
-SemaphoreHandle_t countCompleteSemaphore;
-int currentNumber = 0;
-bool processing = false;
-
-bool isPrime(int num) 
+class FooBarCounter 
 {
-    if (num < 2) 
-		return false;
-    for (int i = 2; i * i <= num; i++) 
+private:
+    QueueHandle_t numberQueue;
+    SemaphoreHandle_t countCompleteSemaphore;
+    int currentNumber;
+    bool processing;
+
+public:
+    FooBarCounter() : currentNumber(0), processing(false) 
     {
-        if (num % i == 0) return false;
+        numberQueue = xQueueCreate(8, sizeof(int));
+        countCompleteSemaphore = xSemaphoreCreateBinary();
     }
-    return true;
-}
 
-void fooTask(void *param) 
-{
-    while (true) 
+    static bool isPrime(int num) 
     {
-        if (processing && (currentNumber % 2 == 0 || currentNumber == 0)) 
+        if (num < 2) 
+        	return false;
+        for (int i = 2; i * i <= num; i++) 
         {
-            ESP_LOGI(TAG, "Foo %d%s", currentNumber, isPrime(currentNumber) && currentNumber > 1 ? " Prime" : "");
-            currentNumber--;
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            xSemaphoreGive(countCompleteSemaphore);
+            if (num % i == 0) return false;
         }
-        vTaskDelay(10);
+        return true;
     }
-}
 
-void barTask(void *param) 
-{
-    while (true) 
+    void fooTask() 
     {
-        if (processing && currentNumber % 2 != 0 && currentNumber >= 0) 
+        while (true) 
         {
-            ESP_LOGI(TAG, "Bar %d%s", currentNumber, isPrime(currentNumber) ? " Prime" : "");
-            currentNumber--;
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            xSemaphoreGive(countCompleteSemaphore);
-        }
-        vTaskDelay(10);
-    }
-}
-
-void serialTask(void *param) 
-{
-    uint8_t data[BUF_SIZE];
-    while (true) 
-    {
-        int len = uart_read_bytes(UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
-        if (len > 0) 
-        {
-            data[len] = '\0';
-            int receivedNum = atoi((char*)data);
-            if (receivedNum == 0) 
+            if (processing && (currentNumber % 2 == 0 || currentNumber == 0)) 
             {
-                ESP_LOGI(TAG, "Restarting ESP32...");
-                esp_restart();
+                ESP_LOGI(TAG, "Foo %d%s", currentNumber, isPrime(currentNumber) && currentNumber > 1 ? " Prime" : "");
+                currentNumber--;
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                xSemaphoreGive(countCompleteSemaphore);
             }
-
-            if (uxQueueMessagesWaiting(numberQueue) < 8) 
-            {
-                xQueueSend(numberQueue, &receivedNum, portMAX_DELAY);
-                ESP_LOGI(TAG, "Received %d", receivedNum);
-            } 
-            else
-            {
-                ESP_LOGI(TAG, "Buffer is full");
-            }
+            vTaskDelay(10);
         }
     }
-}
 
-void countTask(void *param) 
-{
-    int num;
-    while (true) 
+    void barTask() 
     {
-        if (xQueueReceive(numberQueue, &num, portMAX_DELAY)) 
+        while (true) 
         {
-            currentNumber = num;
-            processing = true;
-            while (currentNumber >= 0) 
+            if (processing && currentNumber % 2 != 0 && currentNumber >= 0) 
             {
-                xSemaphoreTake(countCompleteSemaphore, portMAX_DELAY);
+                ESP_LOGI(TAG, "Bar %d%s", currentNumber, isPrime(currentNumber) ? " Prime" : "");
+                currentNumber--;
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                xSemaphoreGive(countCompleteSemaphore);
             }
-            processing = false;
+            vTaskDelay(10);
         }
     }
-}
+
+    void serialTask() 
+    {
+        uint8_t data[BUF_SIZE];
+        while (true) 
+        {
+            int len = uart_read_bytes(UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
+            if (len > 0) 
+            {
+                data[len] = '\0';
+                int receivedNum = atoi((char*)data);
+
+                if (receivedNum == 0) 
+                {
+                    ESP_LOGI(TAG, "Restarting ESP32...");
+                    esp_restart();
+                }
+
+                if (uxQueueMessagesWaiting(numberQueue) < 8) 
+                {
+                    xQueueSend(numberQueue, &receivedNum, portMAX_DELAY);
+                    ESP_LOGI(TAG, "Received %d", receivedNum);
+                } 
+                else 
+                {
+                    ESP_LOGI(TAG, "Buffer is full");
+                }
+            }
+        }
+    }
+
+    void countTask() 
+    {
+        int num;
+        while (true) 
+        {
+            if (xQueueReceive(numberQueue, &num, portMAX_DELAY)) 
+            {
+                currentNumber = num;
+                processing = true;
+                while (currentNumber >= 0) 
+                {
+                    xSemaphoreTake(countCompleteSemaphore, portMAX_DELAY);
+                }
+                processing = false;
+            }
+        }
+    }
+};
+
+FooBarCounter counter;
+
+void fooTaskWrapper(void *param) { counter.fooTask(); }
+void barTaskWrapper(void *param) { counter.barTask(); }
+void serialTaskWrapper(void *param) { counter.serialTask(); }
+void countTaskWrapper(void *param) { counter.countTask(); }
 
 extern "C" void app_main() 
 {
-    numberQueue = xQueueCreate(8, sizeof(int));
-    countCompleteSemaphore = xSemaphoreCreateBinary();
     uart_driver_install(UART_NUM, BUF_SIZE, 0, 0, NULL, 0);
 
-    xTaskCreatePinnedToCore(fooTask, "FooTask", 2048, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(barTask, "BarTask", 2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(serialTask, "SerialTask", 2048, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(countTask, "CountTask", 2048, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(fooTaskWrapper, "FooTask", 2048, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(barTaskWrapper, "BarTask", 2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(serialTaskWrapper, "SerialTask", 2048, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(countTaskWrapper, "CountTask", 2048, NULL, 2, NULL, 1);
 }
+
