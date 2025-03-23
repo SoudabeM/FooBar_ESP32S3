@@ -1,6 +1,37 @@
 #include <Arduino.h>
 #include <queue>
 
+class SerialHandler {
+private:
+    QueueHandle_t &numberQueue;
+public:
+    SerialHandler(QueueHandle_t &queue) : numberQueue(queue) {}
+
+    void serialTask() {
+        char buffer[20];
+        while (true) {
+            if (Serial.available() > 0) {
+                int len = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
+                buffer[len] = '\0';
+                int receivedNum = atoi(buffer);
+
+                if (receivedNum == 0) {
+                    Serial.println("Restarting ESP32...");
+                    ESP.restart();
+                }
+
+                if (uxQueueMessagesWaiting(numberQueue) < 8) {
+                    xQueueSend(numberQueue, &receivedNum, portMAX_DELAY);
+                    Serial.printf("Received %d\n", receivedNum);
+                } else {
+                    Serial.println("Buffer is full");
+                }
+            }
+            vTaskDelay(100);
+        }
+    }
+};
+
 class FooBarCounter {
 private:
     QueueHandle_t numberQueue;
@@ -13,6 +44,8 @@ public:
         numberQueue = xQueueCreate(8, sizeof(int));
         countCompleteSemaphore = xSemaphoreCreateBinary();
     }
+
+    QueueHandle_t &getQueue() { return numberQueue; }
 
     static bool isPrime(int num) {
         if (num < 2) return false;
@@ -54,30 +87,6 @@ public:
         }
     }
 
-    void serialTask() {
-        char buffer[20];
-        while (true) {
-            if (Serial.available() > 0) {
-                int len = Serial.readBytesUntil('\n', buffer, sizeof(buffer) - 1);
-                buffer[len] = '\0';
-                int receivedNum = atoi(buffer);
-
-                if (receivedNum == 0) {
-                    Serial.println("Restarting ESP32...");
-                    ESP.restart();
-                }
-
-                if (uxQueueMessagesWaiting(numberQueue) < 8) {
-                    xQueueSend(numberQueue, &receivedNum, portMAX_DELAY);
-                    Serial.printf("Received %d\n", receivedNum);
-                } else {
-                    Serial.println("Buffer is full");
-                }
-            }
-            vTaskDelay(100);
-        }
-    }
-
     void countTask() {
         int num;
         while (true) {
@@ -94,10 +103,11 @@ public:
 };
 
 FooBarCounter counter;
+SerialHandler serialHandler(counter.getQueue());
 
 void fooTaskWrapper(void *param) { counter.fooTask(); }
 void barTaskWrapper(void *param) { counter.barTask(); }
-void serialTaskWrapper(void *param) { counter.serialTask(); }
+void serialTaskWrapper(void *param) { serialHandler.serialTask(); }
 void countTaskWrapper(void *param) { counter.countTask(); }
 
 void setup() {
