@@ -17,9 +17,9 @@ class SerialHandler
 {
 private:
     QueueHandle_t &numberQueue;
+
 public:
-    SerialHandler(QueueHandle_t &queue) : numberQueue(queue) 
-	{}
+    SerialHandler(QueueHandle_t &queue) : numberQueue(queue) {}
 
     void serialTask() 
     {
@@ -27,7 +27,7 @@ public:
         while (true) 
         {
             int len = uart_read_bytes(UART_NUM, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
-            if (len > 0)
+            if (len > 0) 
             {
                 data[len] = '\0';
                 int receivedNum = atoi((char*)data);
@@ -56,6 +56,7 @@ class FooBarCounter
 {
 private:
     QueueHandle_t numberQueue;
+    QueueHandle_t primeQueue;  // صف جدید برای ارسال به primeTask
     SemaphoreHandle_t countCompleteSemaphore;
     int currentNumber;
     bool processing;
@@ -64,32 +65,41 @@ public:
     FooBarCounter() : currentNumber(0), processing(false)
     {
         numberQueue = xQueueCreate(8, sizeof(int));
+        primeQueue = xQueueCreate(8, sizeof(int));  // صف بررسی عدد اول
         countCompleteSemaphore = xSemaphoreCreateBinary();
     }
 
     QueueHandle_t &getQueue() 
-    { 
-    	return numberQueue;
-    }
+	{ 
+		return numberQueue; 
+	}
+    QueueHandle_t &getPrimeQueue() 
+	{ 
+		return primeQueue; 
+	}
 
-    static bool isPrime(int num)
+    static bool isPrime(int num) 
     {
-        if (num < 2) 
-            return false;
-        for (int i = 2; i * i <= num; i++)
+        if (num < 2) return false;
+        for (int i = 2; i * i <= num; i++) 
         {
             if (num % i == 0) return false;
         }
         return true;
     }
 
-    void fooTask()
+    void fooTask() 
     {
-        while (true)
+        while (true) 
         {
             if (processing && (currentNumber % 2 == 0 || currentNumber == 0)) 
             {
-                ESP_LOGI(TAG, "Foo %d%s", currentNumber, isPrime(currentNumber) && currentNumber > 1 ? " Prime" : "");
+                printf("Foo %d", currentNumber);
+                fflush(stdout);
+
+                // ارسال عدد به primeTask برای بررسی عدد اول
+                xQueueSend(primeQueue, &currentNumber, portMAX_DELAY);
+
                 currentNumber--;
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 xSemaphoreGive(countCompleteSemaphore);
@@ -102,14 +112,36 @@ public:
     {
         while (true) 
         {
-            if (processing && currentNumber % 2 != 0 && currentNumber >= 0)
+            if (processing && currentNumber % 2 != 0 && currentNumber >= 0) 
             {
-                ESP_LOGI(TAG, "Bar %d%s", currentNumber, isPrime(currentNumber) ? " Prime" : "");
+                printf("Bar %d", currentNumber);
+                fflush(stdout);
+
+                // ارسال عدد به primeTask برای بررسی عدد اول
+                xQueueSend(primeQueue, &currentNumber, portMAX_DELAY);
+
                 currentNumber--;
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 xSemaphoreGive(countCompleteSemaphore);
             }
             vTaskDelay(10);
+        }
+    }
+
+    void primeTask() 
+    {
+        int num;
+        while (true) 
+        {
+            if (xQueueReceive(primeQueue, &num, portMAX_DELAY)) 
+            {
+                if (isPrime(num)) 
+                {
+                    printf(" Prime");
+                }
+                printf("\n");  // پایان خط
+                fflush(stdout);
+            }
         }
     }
 
@@ -137,16 +169,16 @@ SerialHandler serialHandler(counter.getQueue());
 
 void fooTaskWrapper(void *param) { counter.fooTask(); }
 void barTaskWrapper(void *param) { counter.barTask(); }
+void primeTaskWrapper(void *param) { counter.primeTask(); }
 void serialTaskWrapper(void *param) { serialHandler.serialTask(); }
 void countTaskWrapper(void *param) { counter.countTask(); }
 
 extern "C" void app_main() 
 {
     uart_driver_install(UART_NUM, BUF_SIZE, 0, 0, NULL, 0);
-
     xTaskCreatePinnedToCore(fooTaskWrapper, "FooTask", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(barTaskWrapper, "BarTask", 2048, NULL, 1, NULL, 1);
     xTaskCreatePinnedToCore(serialTaskWrapper, "SerialTask", 2048, NULL, 2, NULL, 0);
     xTaskCreatePinnedToCore(countTaskWrapper, "CountTask", 2048, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(primeTaskWrapper, "PrimeTask", 2048, NULL, 1, NULL, 0); // تضمین اجرای primeTask در Core 0
 }
-
