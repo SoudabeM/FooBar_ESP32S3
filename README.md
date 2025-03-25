@@ -3,11 +3,11 @@
 
 This branch contains the simulation, which is run in Wokwi online.  
 You can simulate the project on the ESP32S3 board at:  
-[Wokwi Simulation](https://wokwi.com/projects/426161465077400577)  
+[Wokwi Simulation](https://wokwi.com/projects/426385527943128065)  
 
 The current version is the final version with:  
 	Separate classes (`SerialHandler` and `FooBarCounter`)  
-	ESP-IDF compatible code included in this commit: SHA-1: caf622bcdc03e94bedadb9f8a560bb262a16d5d7
+	ESP-IDF compatible code included in this commit: SHA-1: d9a1776024c0caf978492d5c5942871c9158d81a
 
 This version is now fully compatible with Arduino:  
 	Uses `Serial.printf()` instead of `ESP_LOGI(TAG, "...")`  
