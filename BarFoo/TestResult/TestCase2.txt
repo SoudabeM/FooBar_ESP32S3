@@ -1,0 +1,80 @@
+00:46.033
+31%
+
+ESP-ROM:esp32s3-20210327
+
+Build:Mar 27 2021
+
+rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
+
+SPIWP:0xee
+
+mode:DIO, clock div:1
+
+load:0x3fce3808,len:0x370
+
+load:0x403c9700,len:0x900
+
+load:0x403cc700,len:0x2364
+
+entry 0x403c98ac
+
+Received 6
+Foo 6
+Bar 5 Prime
+Foo 4
+Bar 3 Prime
+Foo 2 Prime
+Bar 1
+Foo 0
+Received 5
+Bar 5 Prime
+Foo 4
+Bar 3 Prime
+Foo 2 Prime
+Received 4
+Bar 1
+Foo 0
+Received 3
+Foo 4
+Bar 3 Prime
+Received 2
+Foo 2 Prime
+Bar 1
+Received 1
+Foo 0
+Bar 3 Prime
+Foo 2 Prime
+Bar 1
+Foo 0
+Foo 2 Prime
+Bar 1
+Foo 0
+Bar 1
+Foo 0
+Restarting ESP32...
+
+ESP-ROM:esp32s3-20210327
+
+Build:Mar 27 2021
+
+rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
+
+SPIWP:0xee
+
+mode:DIO, clock div:1
+
+load:0x3fce3808,len:0x370
+
+load:0x403c9700,len:0x900
+
+load:0x403cc700,len:0x2364
+
+entry 0x403c98ac
+
+Received 4
+Foo 4
+Bar 3 Prime
+Foo 2 Prime
+Bar 1
+Foo 0
